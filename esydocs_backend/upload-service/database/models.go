@@ -54,19 +54,19 @@ func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) (err error) {
 }
 
 type ProcessingJob struct {
-	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	UserID        *uuid.UUID     `gorm:"type:uuid;index"`
-	ToolType      string         `gorm:"type:text;not null"`
-	Status        string         `gorm:"type:text;not null;default:'queued'"`
-	Progress      string         `gorm:"type:text;default:'0'"`
-	FileName      string         `gorm:"type:text;not null"`
-	FileSize      string         `gorm:"type:text;not null"`
-	FailureReason *string        `gorm:"type:text"`
-	Metadata      datatypes.JSON `gorm:"type:jsonb"`
-	CreatedAt     time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt     time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
-	CompletedAt   *time.Time
-	ExpiresAt     *time.Time `gorm:"index"`
+	ID            uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID        *uuid.UUID     `gorm:"type:uuid;index" json:"userId,omitempty"`
+	ToolType      string         `gorm:"type:text;not null" json:"toolType"`
+	Status        string         `gorm:"type:text;not null;default:'queued'" json:"status"`
+	Progress      string         `gorm:"type:text;default:'0'" json:"progress"`
+	FileName      string         `gorm:"type:text;not null" json:"fileName"`
+	FileSize      string         `gorm:"type:text;not null" json:"fileSize"`
+	FailureReason *string        `gorm:"type:text" json:"failureReason,omitempty"`
+	Metadata      datatypes.JSON `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt     time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt     time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+	CompletedAt   *time.Time     `json:"completedAt,omitempty"`
+	ExpiresAt     *time.Time     `gorm:"index" json:"expiresAt,omitempty"`
 }
 
 func (job *ProcessingJob) BeforeCreate(tx *gorm.DB) (err error) {
