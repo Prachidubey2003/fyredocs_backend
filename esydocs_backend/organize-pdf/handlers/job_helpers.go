@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"convert-from-pdf/database"
-	"convert-from-pdf/processing"
+	"organize-pdf/database"
+	"organize-pdf/processing"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -60,6 +60,8 @@ func parseJobRequest(c *gin.Context, allowedTools map[string]bool, toolTypeOverr
 
 	if toolType == "merge-pdf" {
 		originalFileName = "merged.pdf"
+	} else if toolType == "scan-to-pdf" {
+		originalFileName = "scanned.pdf"
 	} else {
 		originalFileName = files[0].Filename
 	}
@@ -83,18 +85,7 @@ func parseJobRequest(c *gin.Context, allowedTools map[string]bool, toolTypeOverr
 }
 
 func normalizeToolType(toolType string) string {
-	switch toolType {
-	case "ppt-to-pdf":
-		return "powerpoint-to-pdf"
-	case "pdf-to-ppt":
-		return "pdf-to-powerpoint"
-	case "pdf-to-img", "pdf-to-jpg":
-		return "pdf-to-image"
-	case "img-to-pdf":
-		return "image-to-pdf"
-	case "pdf-to-pdf-a", "pdfa":
-		return "pdf-to-pdfa"
-	}
+	// Add any aliases here if needed
 	return toolType
 }
 

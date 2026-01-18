@@ -5,16 +5,17 @@ import (
 	"net/http"
 )
 
-var convertFromTools = map[string]bool{
-	"pdf-to-image":      true,
-	"pdf-to-word":       true,
-	"pdf-to-powerpoint": true,
-	"pdf-to-excel":      true,
-	"pdf-to-pdfa":       true,
+var organizeTools = map[string]bool{
+	"merge-pdf":     true,
+	"split-pdf":     true,
+	"remove-pages":  true,
+	"extract-pages": true,
+	"organize-pdf":  true,
+	"scan-to-pdf":   true,
 }
 
-func CreatePdfFromJob(c *gin.Context) {
-	req, err := parseJobRequest(c, convertFromTools, c.Param("tool"))
+func CreateOrganizePdfJob(c *gin.Context) {
+	req, err := parseJobRequest(c, organizeTools, c.Param("tool"))
 	if err != nil {
 		status := http.StatusBadRequest
 		if err.Error() == "failed to create upload directory" || err.Error() == "failed to save uploaded file" {
