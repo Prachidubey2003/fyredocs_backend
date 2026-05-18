@@ -1,0 +1,325 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  build-test:
+    name: build · vet · test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - shared
+          - api-gateway
+          - auth-service
+          - billing-service
+          - cleanup-worker
+          - cli
+          - collab-service
+          - convert-from-pdf
+          - convert-to-pdf
+          - editor-service
+          - analytics-service
+          - job-service
+          - notify-service
+          - optimize-pdf
+          - organize-pdf
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
+
+      - name: go build
+        run: go build ./${{ matrix.service }}/...
+
+      - name: go vet
+        run: go vet ./${{ matrix.service }}/...
+
+      - name: go test (race + coverage)
+        run: |
+          mkdir -p .coverage
+          go test -race -coverprofile=.coverage/${{ matrix.service }}.out -covermode=atomic ./${{ matrix.service }}/...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: .coverage/${{ matrix.service }}.out
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The Python SDK is stdlib-only (no third-party install deps) but
+  # still needs pytest for the test runner. Runs on the matrix of
+  # supported Pythons declared in sdks/python/pyproject.toml.
+  sdk-python:
+    name: pytest (sdks/python · py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: pytest
+        working-directory: sdks/python
+        run: PYTHONPATH=src python -m pytest tests/ -v
+
+  # The Go SDK lives at a nested path (sdks/go) so it doesn't fit the
+  # flat `service:` matrix above. Same build/vet/test/coverage shape;
+  # a dedicated job keeps the matrix readable.
+  sdk-go:
+    name: build · vet · test (sdks/go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
+
+      - name: go build
+        run: go build ./sdks/go/...
+
+      - name: go vet
+        run: go vet ./sdks/go/...
+
+      - name: go test (race + coverage)
+        run: |
+          mkdir -p .coverage
+          go test -race -coverprofile=.coverage/sdks-go.out -covermode=atomic ./sdks/go/...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-sdks-go
+          path: .coverage/sdks-go.out
+          if-no-files-found: ignore
+          retention-days: 7
+
+  lint:
+    name: gofmt · staticcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './*/vendor/*'))
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: staticcheck
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: "2025.1"
+          install-go: false
+
+  security:
+    name: gosec · govulncheck · gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks needs history
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
+
+      - name: gosec
+        uses: securego/gosec@master
+        with:
+          args: -no-fail -fmt sarif -out gosec.sarif ./...
+
+      - name: Upload gosec SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          for svc in shared api-gateway auth-service billing-service cleanup-worker cli collab-service convert-from-pdf convert-to-pdf editor-service analytics-service job-service notify-service optimize-pdf organize-pdf sdks/go; do
+            echo "--- govulncheck $svc ---"
+            govulncheck ./$svc/...
+          done
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
+
+  sbom:
+    name: SBOM (syft)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: sbom-backend.spdx.json
+          upload-artifact-retention: 14
+
+  openapi:
+    name: OpenAPI 3.1 lint · bundle · render
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/developer/swagger
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lint
+        run: npx --yes @redocly/cli@1 lint openapi.yaml
+
+      - name: Bundle (single dereferenced file)
+        run: npx --yes @redocly/cli@1 bundle openapi.yaml -o openapi.bundled.yaml
+
+      - name: Render static docs (Redoc HTML)
+        run: npx --yes @redocly/cli@1 build-docs openapi.yaml -o openapi.html
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: |
+            docs/developer/swagger/openapi.bundled.yaml
+            docs/developer/swagger/openapi.html
+          retention-days: 14
+
+  sdk-typescript:
+    name: SDK · TypeScript · typecheck + test + drift
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdks/typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sdks/typescript/package-lock.json
+
+      - name: Install
+        # npm ci is strict about lockfile-package.json drift, which is
+        # what we want for a published SDK — a hand-edited package.json
+        # without a matching lockfile update should fail loudly here.
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        run: npm run test
+
+      - name: Build
+        # Confirms `dist/` builds cleanly with both `types.ts` and
+        # the OpenAPI-driven `generated.ts` — the published artifact
+        # is what consumers `npm install`.
+        run: npm run build
+
+      - name: OpenAPI drift gate (check:types-fresh)
+        # Regenerates types from docs/developer/swagger/openapi.yaml
+        # into a tempfile and `diff`s against the committed
+        # src/generated.ts. Diff = a spec change that wasn't
+        # propagated; PR fails with a clear "run `npm run
+        # generate:types` and commit" signal.
+        run: npm run check:types-fresh
+
+  sdk-embed:
+    name: SDK · Embed · typecheck + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdks/embed
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sdks/embed/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        # happy-dom hosts the Custom Element + Shadow DOM tests.
+        run: npm run test
+
+      - name: Build
+        # Produces dist/ ESM + .d.ts; the published @fyredocs/embed
+        # tarball is what partners npm-install.
+        run: npm run build

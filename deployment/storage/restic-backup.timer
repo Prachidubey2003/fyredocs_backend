@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Fyredocs restic backup nightly
+Documentation=file:/etc/fyredocs/docs/STORAGE.md
+
+[Timer]
+# 02:30 local time every day, with up to 30m of randomization
+# to spread load across fleet hosts.
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=restic-backup.service
+
+[Install]
+WantedBy=timers.target

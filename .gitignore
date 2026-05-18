@@ -11,9 +11,34 @@
 
 # Compiled binaries
 **/bin/
+# Local Go test binaries: `go build` on Windows produces
+# `<service>.exe`; `go test -c` produces `<pkg>.test`. Neither
+# belongs in the tree.
+**/*.exe
+**/*.test
 
 # Uploaded and converted files (local bind-mount storage)
 files/uploads/*
 !files/uploads/.gitkeep
 files/outputs/*
 !files/outputs/.gitkeep
+
+# Node-based SDKs (sdks/typescript, sdks/embed, sdks/zapier)
+# — each is its own npm package with vendored deps + build
+# output. Lockfiles stay tracked per-package; deps don't.
+sdks/**/node_modules/
+sdks/**/dist/
+sdks/**/build/
+
+# Zapier CLI local linkage — per-developer, never committed.
+sdks/zapier/.zapierapprc
+
+# Python SDK build / test cache artifacts.
+sdks/python/**/__pycache__/
+sdks/python/**/*.pyc
+sdks/python/**/.pytest_cache/
+sdks/python/**/*.egg-info/
+
+# TypeScript incremental build cache (any SDK using
+# tsc --incremental writes these next to the sources).
+**/*.tsbuildinfo

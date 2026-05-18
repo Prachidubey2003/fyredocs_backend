@@ -1,0 +1,54 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directories:
+      - "/shared"
+      - "/api-gateway"
+      - "/auth-service"
+      - "/job-service"
+      - "/convert-from-pdf"
+      - "/convert-to-pdf"
+      - "/organize-pdf"
+      - "/optimize-pdf"
+      - "/editor-service"
+      - "/analytics-service"
+      - "/cleanup-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "go"
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/api-gateway"
+      - "/auth-service"
+      - "/job-service"
+      - "/convert-from-pdf"
+      - "/convert-to-pdf"
+      - "/organize-pdf"
+      - "/optimize-pdf"
+      - "/editor-service"
+      - "/analytics-service"
+      - "/cleanup-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -1,0 +1,201 @@
+name: cli-release
+
+# Triggered manually via a tag push of the form `cli/v<semver>`. We
+# scope the tag with the `cli/` prefix so the same backend repo can
+# also tag service releases later without collision.
+#
+#   git tag cli/v0.1.0
+#   git push origin cli/v0.1.0
+#
+# What this workflow does:
+#   1. Cross-compiles the CLI for 5 OS/arch combos.
+#   2. Bundles each binary into a versioned archive (tar.gz / zip).
+#   3. Computes SHA256 sums and writes them into a single
+#      SHA256SUMS.txt manifest.
+#   4. Publishes a GitHub Release with all artifacts attached.
+#   5. Smoke-tests the linux-amd64 build by running `fyredocs version`
+#      so a broken `-ldflags` value fails CI before the release lands.
+#
+# To bump:
+#   - Tag from main with `cli/vX.Y.Z`.
+#   - Update [cli/README.md](../../cli/README.md) install instructions
+#     to point at the new tag if the URL pattern changed.
+
+on:
+  push:
+    tags:
+      - "cli/v*"
+
+permissions:
+  contents: write # required for action-gh-release to upload assets
+
+concurrency:
+  # Two pushes of the same tag would race the release-create step.
+  # `cancel-in-progress: false` is intentional — once a release-build
+  # is underway we want it to finish, not be aborted by a re-push.
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  build:
+    name: build ${{ matrix.target.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { label: "darwin-amd64", goos: "darwin", goarch: "amd64", ext: "" }
+          - { label: "darwin-arm64", goos: "darwin", goarch: "arm64", ext: "" }
+          - { label: "linux-amd64", goos: "linux", goarch: "amd64", ext: "" }
+          - { label: "linux-arm64", goos: "linux", goarch: "arm64", ext: "" }
+          - { label: "windows-amd64", goos: "windows", goarch: "amd64", ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: cli/go.sum
+
+      - name: Resolve version
+        id: version
+        run: |
+          # Tag is `cli/vX.Y.Z`; strip the `cli/` prefix so the
+          # binary self-identifies as `vX.Y.Z` (matches the
+          # buildVersion convention in main.go).
+          version="${GITHUB_REF#refs/tags/cli/}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved CLI version: ${version}"
+
+      - name: Build binary
+        working-directory: cli
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p ../dist
+          out="../dist/fyredocs-${{ steps.version.outputs.version }}-${{ matrix.target.label }}${{ matrix.target.ext }}"
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X main.buildVersion=${{ steps.version.outputs.version }}" \
+            -o "$out" \
+            .
+          ls -lh "$out"
+
+      - name: Smoke-test linux-amd64 binary
+        if: matrix.target.label == 'linux-amd64'
+        run: |
+          # The binary must report the same version we just stamped.
+          # Catches `-ldflags` typos that would otherwise ship `dev`.
+          out="./dist/fyredocs-${{ steps.version.outputs.version }}-linux-amd64"
+          got=$("$out" version)
+          want="${{ steps.version.outputs.version }}"
+          if [ "$got" != "$want" ]; then
+            echo "::error::version mismatch: binary reports $got, expected $want"
+            exit 1
+          fi
+          echo "smoke-test ok: $got"
+
+      - name: Bundle archive
+        working-directory: dist
+        run: |
+          bin="fyredocs-${{ steps.version.outputs.version }}-${{ matrix.target.label }}${{ matrix.target.ext }}"
+          base="fyredocs-${{ steps.version.outputs.version }}-${{ matrix.target.label }}"
+          cp ../cli/README.md ./README.md
+          cp ../LICENSE ./LICENSE 2>/dev/null || true
+          # Rename the binary inside the archive to the canonical
+          # `fyredocs` / `fyredocs.exe` so unpacking + PATHing is
+          # one move-step for the user.
+          if [ "${{ matrix.target.goos }}" = "windows" ]; then
+            cp "$bin" "fyredocs.exe"
+            zip "${base}.zip" "fyredocs.exe" "README.md" LICENSE 2>/dev/null || \
+              zip "${base}.zip" "fyredocs.exe" "README.md"
+            rm "fyredocs.exe"
+          else
+            cp "$bin" "fyredocs"
+            chmod +x "fyredocs"
+            tar -czf "${base}.tar.gz" "fyredocs" "README.md" LICENSE 2>/dev/null || \
+              tar -czf "${base}.tar.gz" "fyredocs" "README.md"
+            rm "fyredocs"
+          fi
+          rm "README.md"
+          rm -f LICENSE
+          ls -lh "${base}".*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.label }}
+          path: dist/fyredocs-${{ steps.version.outputs.version }}-${{ matrix.target.label }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/cli/}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: |
+          # Single combined manifest — easier for Homebrew/scoop
+          # formula automation than per-archive .sha256 files.
+          sha256sum fyredocs-${{ steps.version.outputs.version }}-*.{tar.gz,zip} \
+            | sort > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: fyredocs CLI ${{ steps.version.outputs.version }}
+          body: |
+            Fyredocs CLI ${{ steps.version.outputs.version }} — see
+            [cli/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/cli/README.md)
+            for usage.
+
+            ## Install
+
+            **macOS / Linux**:
+            ```bash
+            curl -L -o fyredocs.tar.gz \
+              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/fyredocs-${{ steps.version.outputs.version }}-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+            tar -xzf fyredocs.tar.gz
+            sudo mv fyredocs /usr/local/bin/
+            ```
+
+            **Windows**: download the `windows-amd64.zip` archive
+            from the assets below and unzip `fyredocs.exe` into a
+            directory on your `%PATH%`.
+
+            ## Verify
+
+            ```bash
+            curl -L -O https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt --ignore-missing
+            ```
+          files: |
+            dist/fyredocs-${{ steps.version.outputs.version }}-*.tar.gz
+            dist/fyredocs-${{ steps.version.outputs.version }}-*.zip
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}

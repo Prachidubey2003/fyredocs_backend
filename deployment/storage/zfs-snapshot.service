@@ -1,0 +1,23 @@
+[Unit]
+Description=Fyredocs hourly ZFS snapshot of /files dataset
+Documentation=file:/etc/fyredocs/docs/STORAGE.md
+ConditionPathExists=/sbin/zfs
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/fyredocs/zfs.env
+ExecStart=/usr/local/bin/zfs-snapshot.sh
+TimeoutStartSec=10m
+
+# zfs(8) needs root; restrict everything else.
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

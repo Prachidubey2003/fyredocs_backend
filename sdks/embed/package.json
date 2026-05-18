@@ -1,0 +1,45 @@
+{
+  "name": "@fyredocs/embed",
+  "version": "0.1.0",
+  "description": "Embeddable Fyredocs editor — a <fyredocs-editor> Web Component that wraps the hosted editor in an iframe + a postMessage bridge.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.5.5",
+    "happy-dom": "15.7.4",
+    "typescript": "5.6.2",
+    "vitest": "2.1.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "fyredocs",
+    "pdf",
+    "editor",
+    "web-component",
+    "embed"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

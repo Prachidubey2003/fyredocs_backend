@@ -1,0 +1,53 @@
+# gitleaks configuration for fyredocs_backend.
+#
+# Extends the default rule set; adds allowlists for legitimate example files,
+# test fixtures, generated artifacts, and Postman placeholder secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for files that legitimately contain example tokens"
+
+paths = [
+  # Example env files document the schema and use placeholder values.
+  "(.*)\\.env\\.example$",
+  "(.*)\\.env\\.sample$",
+
+  # Postman collection has placeholder Bearer tokens / api keys for docs.
+  "Fyredocs_API\\.postman_collection\\.json$",
+
+  # Per-service API docs include example tokens and `Authorization: Bearer ...` headers.
+  "docs/developer/api/.*\\.md$",
+
+  # OpenAPI spec — examples include `Authorization: Bearer fyr_live_abc...`.
+  "docs/developer/swagger/openapi\\.yaml$",
+
+  # Generated OpenAPI artifacts (rebuilt by CI; gitignored anyway).
+  "docs/developer/swagger/openapi\\.bundled\\.yaml$",
+  "docs/developer/swagger/openapi\\.html$",
+
+  # SBOM artifacts.
+  "sbom-.*\\.spdx\\.json$",
+
+  # Test files: random secrets used in unit tests are not real.
+  ".*_test\\.go$",
+]
+
+# Common test/example tokens that should never trigger a leak alert.
+regexes = [
+  "(?i)example[_-]?(secret|password|token|key)",
+  "(?i)placeholder[_-]?(secret|password|token|key)",
+  "AKIAIOSFODNN7EXAMPLE",                 # AWS docs canonical example key id
+  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", # AWS docs canonical example secret
+]
+
+# Reduce false-positives from short hex strings used as test fixtures.
+[[rules]]
+id = "ignore-test-fixture-hex"
+description = "Don't fire on short hex strings inside *_test.go"
+path = ".*_test\\.go"
+regex = '''[a-f0-9]{20,64}'''
+[rules.allowlist]
+description = "These are test fixtures, not real secrets."
+regexes = ['''[a-f0-9]{20,64}''']

@@ -1,0 +1,31 @@
+[Unit]
+Description=Fyredocs nightly off-site backup of /files (restic)
+Documentation=file:/etc/fyredocs/docs/STORAGE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/fyredocs/restic.env
+ExecStart=/usr/local/bin/restic-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=5
+# Stop a hung run after 6 hours rather than overlapping with the next timer.
+TimeoutStartSec=6h
+
+# Hardening — restic only needs to read /files and reach the cloud backend.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/files
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

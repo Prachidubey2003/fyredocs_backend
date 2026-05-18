@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Fyredocs ZFS hourly snapshot
+Documentation=file:/etc/fyredocs/docs/STORAGE.md
+
+[Timer]
+# Every hour at :07 — slightly offset from common :00 cron-storms.
+OnCalendar=hourly
+OnCalendar=*-*-* *:07:00
+RandomizedDelaySec=2m
+Persistent=true
+Unit=zfs-snapshot.service
+
+[Install]
+WantedBy=timers.target

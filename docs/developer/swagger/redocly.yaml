@@ -1,0 +1,52 @@
+# Redocly configuration for Fyredocs OpenAPI 3.1 spec.
+#
+# Strategy:
+#   * Keep the structural rules as errors (refs must resolve, schemas valid, etc.).
+#   * Downgrade opinionated style rules to warnings — useful guidance, not blockers.
+#   * Disable rules that conflict with how this API is actually shaped
+#     (cookie-based auth + guest tokens + per-tenant rate-limit envelopes).
+
+extends:
+  - recommended
+
+rules:
+  # Real correctness — keep as errors.
+  no-unresolved-refs: error
+  no-empty-servers: error
+  operation-operationId: error
+  operation-operationId-unique: error
+  operation-operationId-url-safe: error
+  operation-2xx-response: error
+  path-params-defined: error
+  no-path-trailing-slash: error
+  spec: error
+
+  # Style / completeness — useful, but not gates.
+  operation-4xx-response: warn        # error envelopes are documented globally
+  operation-description: warn
+  operation-summary: warn
+  operation-tag-defined: warn
+  info-license: off                    # license is in repo, not the spec
+  info-license-url: off
+  info-contact: warn
+  tag-description: warn
+  operation-singular-tag: off
+
+  # The next two clash with how our API actually works — keep off until/unless
+  # we move every public route to an explicit `security: []` declaration
+  # (we use cookie-based session auth + guest tokens; the gateway populates
+  # auth context, individual operations don't redeclare it).
+  security-defined: off
+  no-server-example.com: off
+  no-server-variables-empty-enum: off
+
+  # Schema hygiene.
+  no-invalid-media-type-examples: warn
+  no-unused-components: warn
+  spec-components-invalid-map-name: warn
+
+# Lint a single root spec for now. Per-service splits (editor-service,
+# collab-service, etc.) can be added under `apis:` when they land.
+apis:
+  fyredocs@v1:
+    root: ./openapi.yaml

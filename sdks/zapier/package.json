@@ -1,0 +1,26 @@
+{
+  "name": "@fyredocs/zapier",
+  "version": "0.1.0",
+  "description": "Official Fyredocs integration for the Zapier Developer Platform. REST-hook triggers, conversion + sign actions, API-key authentication.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "validate": "zapier validate",
+    "test": "node --test test/*.test.js",
+    "test:zapier": "zapier test",
+    "push": "zapier push"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zapier-platform-core": "16.4.0"
+  },
+  "devDependencies": {
+    "zapier-platform-cli": "16.4.0"
+  },
+  "zapier": {
+    "convertedByCoreVersion": null,
+    "convertedFromAppID": null
+  }
+}
